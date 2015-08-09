@@ -1,0 +1,18 @@
+#
+# this is your module manifest and used by Titanium
+# during compilation, packaging, distribution, etc.
+#
+version: 0.1
+apiversion: 2
+architectures: armv7 arm64 i386 x86_64
+description: TiAVPlayer. A Titanium module to use AVPlayer for playing audio instead of the vastly outdated AudioStreamer library. 
+author: Kosso
+license: MIT
+copyright: 2015
+
+# these should not be edited
+name: TiAVPlayer
+moduleid: com.kosso.tiavplayer
+guid: d2a0329c-9b39-405c-9cd0-4bbb323f5baa
+platform: iphone
+minsdk: 4.1.1.v20150802200935
