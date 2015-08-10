@@ -1,5 +1,5 @@
 /**
- * TiAVPlayer 
+ * TiAVPlayer
  *
  
  A Titanium module for (hopefully) better audioplayer control than the current Ti.Media.audioPlayer, since it's based on very old code.
@@ -15,7 +15,7 @@
  I do not know how to properly code Objective-C!  But through a lot of trial and error, I seem to have the basics working.
  
  There's probably loads of rookie mistakes that I've made, or gone totally the wrong way about some things.
- There will also be things missing to create parity from the Android Ti.Media.audioPlayer. 
+ There will also be things missing to create parity from the Android Ti.Media.audioPlayer.
  Feel free to fork and submit pull requests for bugs and improvements.
  
  
@@ -66,24 +66,24 @@
 - (void)stopWatchingForChangesTimer
 {
     dispatch_async(dispatch_get_main_queue(), ^{
-
+        
         [progressUpdateTimer invalidate];
         RELEASE_TO_NIL(progressUpdateTimer);
-    
+        
     });
-                   
+    
 }
 - (void)startWatchingForChangesTimer
 {
     
     dispatch_async(dispatch_get_main_queue(), ^{
         progressUpdateTimer = [[NSTimer scheduledTimerWithTimeInterval:0.1
-                                                            target:self
-                                                          selector:@selector(updateProgress:)
-                                                          userInfo:nil
-                                                           repeats:YES] retain];
+                                                                target:self
+                                                              selector:@selector(updateProgress:)
+                                                              userInfo:nil
+                                                               repeats:YES] retain];
     });
-
+    
 }
 
 - (void)setUrl:(id)value
@@ -95,7 +95,7 @@
     durationavailable = NO;
     
     ENSURE_SINGLE_ARG(value, NSString);
-
+    
     url = [value retain];
     
     NSString *escapedValue =
@@ -105,8 +105,8 @@
                                                          NULL,
                                                          kCFStringEncodingUTF8) autorelease];
     NSLog(@"[INFO] avPlayer setUrl : %@", url);
-
-        
+    
+    
     // Stop if needed
     if(avPlayer!=nil){
         [self stopWatchingForChangesTimer];
@@ -121,13 +121,26 @@
             [avPlayer.currentItem removeObserver:self forKeyPath:@"timedMetadata"];
             [avPlayer.currentItem removeObserver:self forKeyPath:@"status"];
         }
-
+        
     }
     RELEASE_TO_NIL(avPlayer);
     
     status = AV_PLAYER_STATUS_UNKNOWN;
     state = AV_PLAYER_STATE_UNKNOWN;
-    
+    /*
+    NSMutableDictionary * headers = [NSMutableDictionary dictionary];
+    [headers setObject:@"KossoTiAVPlayerModule" forKey:@"User-Agent"];
+    AVURLAsset * asset = [AVURLAsset URLAssetWithURL:[NSURL URLWithString:escapedValue] options:@{@"AVURLAssetHTTPHeaderFieldsKey" : headers}];
+    AVPlayerItem * item = [AVPlayerItem playerItemWithAsset:asset];
+    avPlayer = [[AVPlayer alloc] initWithPlayerItem:item];
+    */
+    NSDictionary *dictionary =
+    [[NSDictionary alloc] initWithObjectsAndKeys:
+     @"Your desired user agent", @"UserAgent", nil];
+    [[NSUserDefaults standardUserDefaults] registerDefaults:dictionary];
+    [dictionary release];
+
+
     //if(!avPlayer){
     avPlayer = [[AVPlayer alloc] initWithURL:[NSURL URLWithString:escapedValue]];
     //} else {
@@ -147,8 +160,8 @@
                                                object:[avPlayer currentItem]];
     
     [avPlayer.currentItem addObserver:self forKeyPath:@"status" options:NSKeyValueObservingOptionNew context:nil];
-    [avPlayer.currentItem addObserver:self forKeyPath:@"timedMetadata" options:NSKeyValueObservingOptionNew context:NULL];
-
+    [avPlayer.currentItem addObserver:self forKeyPath:@"timedMetadata" options:nil context:nil];
+    
 }
 
 // KVO
@@ -156,17 +169,17 @@
                         change:(NSDictionary *)change context:(void *)context {
     if (object == avPlayer.currentItem && [keyPath isEqualToString:@"status"]) {
         
-        NSLog(@"[INFO] KVO avPlayer.currentItem status changed : %d", avPlayer.currentItem.status);
+        //NSLog(@"[INFO] KVO avPlayer.currentItem status changed : %d", avPlayer.currentItem.status);
         
         if (avPlayer.currentItem.status == AVPlayerStatusReadyToPlay) {
-           // NSLog(@"[INFO] KVO avPlayer set status : AV_PLAYER_STATUS_READY_TO_PLAY");
+            // NSLog(@"[INFO] KVO avPlayer set status : AV_PLAYER_STATUS_READY_TO_PLAY");
             status = AV_PLAYER_STATUS_READY_TO_PLAY;
         } else if (avPlayer.currentItem.status == AVPlayerStatusUnknown) {
-           // NSLog(@"[INFO] KVO avPlayer set status : AV_PLAYER_STATUS_UNKNOWN");
+            // NSLog(@"[INFO] KVO avPlayer set status : AV_PLAYER_STATUS_UNKNOWN");
             status = AV_PLAYER_STATUS_UNKNOWN;
         } else if (avPlayer.currentItem.status == AVPlayerStatusFailed) {
             // something went wrong. avPlayer.error should contain some information
-            NSLog(@"[INFO] KVO avPlayer set status AV_PLAYER_STATUS_FAILED");
+            //NSLog(@"[INFO] KVO avPlayer set status AV_PLAYER_STATUS_FAILED");
             status = AV_PLAYER_STATUS_FAILED;
             state = AV_PLAYER_STATE_FAILED;
             // fire an error event
@@ -190,95 +203,102 @@
         }
         
         /*
-        if(NUMINT(avPlayer.status)!=lastPlayerReadyStatus && avPlayer.status!=AVPlayerStatusFailed){
-            NSLog(@"[INFO] avPlayer status changed");
-            NSLog(@"[INFO] status: %d", avPlayer.status);
-            lastPlayerReadyStatus = NUMINT(avPlayer.status);
-            status = lastPlayerReadyStatus;
-            
-            //if(avPlayer.status == AVPlayerStatusReadyToPlay){
-            //    status = AV_PLAYER_STATE_READY;
-            //}
-            
-            @synchronized(self){
-                
-                if ([self _hasListeners:@"readystatuschange"]) {
-                    NSDictionary *event = [NSDictionary dictionaryWithObjectsAndKeys:
-                                           lastPlayerReadyStatus,              @"status",
-                                           self,                    @"source",
-                                           @"readystatuschange",         @"type",nil];
-                    [self fireEvent:@"readystatuschange" withObject:event];
-                }
-            }
-        }
+         if(NUMINT(avPlayer.status)!=lastPlayerReadyStatus && avPlayer.status!=AVPlayerStatusFailed){
+         NSLog(@"[INFO] avPlayer status changed");
+         NSLog(@"[INFO] status: %d", avPlayer.status);
+         lastPlayerReadyStatus = NUMINT(avPlayer.status);
+         status = lastPlayerReadyStatus;
+         
+         //if(avPlayer.status == AVPlayerStatusReadyToPlay){
+         //    status = AV_PLAYER_STATE_READY;
+         //}
+         
+         @synchronized(self){
+         
+         if ([self _hasListeners:@"readystatuschange"]) {
+         NSDictionary *event = [NSDictionary dictionaryWithObjectsAndKeys:
+         lastPlayerReadyStatus,              @"status",
+         self,                    @"source",
+         @"readystatuschange",         @"type",nil];
+         [self fireEvent:@"readystatuschange" withObject:event];
+         }
+         }
+         }
          */
         
         
         
-    }
-    if (object == avPlayer.currentItem && [keyPath isEqualToString:@"timedMetadata"])
-    {
-        NSLog(@"[INFO] currentItem timedMetadata!!");
-        
-        AVPlayerItem* _playerItem = object;
-        
-        
-        for (AVMetadataItem* metadata in _playerItem.timedMetadata)
+    } else
+        if ([keyPath isEqualToString:@"timedMetadata"])
         {
-            NSLog(@"[INFO] \nkey: %@\nkeySpace: %@\ncommonKey: %@\nvalue: %@", [metadata.key description], metadata.keySpace, metadata.commonKey, metadata.stringValue);
+            NSLog(@"[INFO] currentItem timedMetadata!!");
+            
+            
+            AVPlayerItem* _playerItem = object;
+            
+            
+            
+             for (AVMetadataItem* metadata in _playerItem.timedMetadata)
+             {
+             NSLog(@"[INFO] \nkey: %@\nkeySpace: %@\ncommonKey: %@\nvalue: %@", [metadata.key description], metadata.keySpace, metadata.commonKey, metadata.stringValue);
+             }
+             
+            
+             //NSArray *mmetadata = [_playerItem.asset metadata]; // iOS 8+
+             
+             NSArray *mmetadata = [_playerItem.asset commonMetadata];
+             for ( AVMetadataItem* item in mmetadata ) {
+             NSString *key = [item commonKey];
+             NSString *value = [item stringValue];
+             NSLog(@"[INFO] METADATA : key = %@, value = %@", key, value);
+             }
+            
+            
         }
-        
-        NSArray *mmetadata = [_playerItem.asset commonMetadata];
-        for ( AVMetadataItem* item in mmetadata ) {
-            NSString *key = [item commonKey];
-            NSString *value = [item stringValue];
-            NSLog(@"[INFO] METADATA : key = %@, value = %@", key, value);
-        }
-    }
     
 }
 
 /*
-- (void)readyStatusUpdate
-{
-    
-    if(NUMINT(avPlayer.status)!=lastPlayerReadyStatus){
-        NSLog(@"[INFO] readyStatusUpdate: %d", avPlayer.status);
-        //NSLog(@"[INFO] ASSET : %@", avPlayer.currentItem.asset);
-
-        lastPlayerReadyStatus = NUMINT(avPlayer.status);
-        status = lastPlayerReadyStatus;
-        
-        if(avPlayer.status == AVPlayerStatusReadyToPlay){
-            status = AV_PLAYER_STATE_READY;
-            // Oddly, even when I give this a dummy url, it still gives AVPlayerStatusReadyToPlay ?
-            // However, the AVAsset will be null.
-            if(avPlayer.currentItem.asset==nil){
-                NSLog(@"[INFO] ASSET IS NULL!");
-                status = AV_PLAYER_STATUS_FAILED;
-                lastPlayerReadyStatus = NUMINT(status);
-            }
-        }
-        
-        @synchronized(self){
-            
-            if ([self _hasListeners:@"readystatuschange"]) {
-                NSDictionary *event = [NSDictionary dictionaryWithObjectsAndKeys:
-                                       lastPlayerReadyStatus,             @"status",
-                                       self,                        @"source",
-                                       @"readystatuschange",        @"type",nil];
-                [self fireEvent:@"readystatuschange" withObject:event];
-            }
-        }
-    }
-}
-*/
+ - (void)readyStatusUpdate
+ {
+ 
+ if(NUMINT(avPlayer.status)!=lastPlayerReadyStatus){
+ NSLog(@"[INFO] readyStatusUpdate: %d", avPlayer.status);
+ //NSLog(@"[INFO] ASSET : %@", avPlayer.currentItem.asset);
+ 
+ lastPlayerReadyStatus = NUMINT(avPlayer.status);
+ status = lastPlayerReadyStatus;
+ 
+ if(avPlayer.status == AVPlayerStatusReadyToPlay){
+ status = AV_PLAYER_STATE_READY;
+ // Oddly, even when I give this a dummy url, it still gives AVPlayerStatusReadyToPlay ?
+ // However, the AVAsset will be null.
+ if(avPlayer.currentItem.asset==nil){
+ NSLog(@"[INFO] ASSET IS NULL!");
+ status = AV_PLAYER_STATUS_FAILED;
+ lastPlayerReadyStatus = NUMINT(status);
+ }
+ }
+ 
+ @synchronized(self){
+ 
+ if ([self _hasListeners:@"readystatuschange"]) {
+ NSDictionary *event = [NSDictionary dictionaryWithObjectsAndKeys:
+ lastPlayerReadyStatus,             @"status",
+ self,                        @"source",
+ @"readystatuschange",        @"type",nil];
+ [self fireEvent:@"readystatuschange" withObject:event];
+ }
+ }
+ }
+ }
+ */
 
 
 - (void)playerItemDidReachEnd:(NSNotification *)notification
 {
     NSLog(@"[INFO] avPlayer ended ");
-
+    
     //[self stopWatchingForChangesTimer];
     
     state = AV_PLAYER_STATE_READY;
@@ -302,11 +322,11 @@
     
     @synchronized(self)
     {
-     //   dispatch_sync(dispatch_get_main_queue(), ^{
-            [self play:args];
-            paused = NO;
-            //playing = YES;
-      //  });
+        //   dispatch_sync(dispatch_get_main_queue(), ^{
+        [self play:args];
+        paused = NO;
+        //playing = YES;
+        //  });
     }
 }
 
@@ -414,7 +434,7 @@
 - (void)updateProgress:(NSTimer *)updateTimer
 {
     
-   // return;
+    // return;
     
     if (avPlayer.rate != 0.0f)
     {
@@ -422,11 +442,20 @@
         {
             if( CMTimeCompare(avPlayer.currentItem.asset.duration, kCMTimeIndefinite) == 0 && !durationavailable ){
                 // Duration is 'Indefinite' until it's known.
-                // NOTE: Live radio will never get this..
+                
+                // A duration of kCMTimeIndefinite is reported for live streaming
                 // NSLog(@"[INFO] no duration available yet");
+
                 return;
             } else {
                 if(!durationavailable){
+                    
+                    
+                    // MOVE THIS TO AN OBSERVER ON currentItem.duration?
+                    // then change to "durationchange"?  (Will this change/grow when buffering?)
+                    
+                    
+                    
                     // OK. Let's fire the duationavailable event and set the flag.
                     durationavailable = YES;
                     // Update the duration
@@ -519,10 +548,10 @@
 {
     if ([self _hasListeners:@"progress"]) {
         NSDictionary *event = [NSDictionary dictionaryWithObjectsAndKeys:
-                           NUMDOUBLE(value * 1000),      @"time",
-                           NUMDOUBLE(CMTimeGetSeconds(avPlayer.currentItem.asset.duration) * 1000),    @"duration",
-                           self,					               @"source",
-                           @"progress",                            @"type",nil];
+                               NUMDOUBLE(value * 1000),      @"time",
+                               NUMDOUBLE(CMTimeGetSeconds(avPlayer.currentItem.asset.duration) * 1000),    @"duration",
+                               self,					               @"source",
+                               @"progress",                            @"type",nil];
         [self fireEvent:@"progress" withObject:event];
     }
 }
