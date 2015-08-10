@@ -57,6 +57,7 @@
 
 -(void)dealloc
 {
+    NSLog(@"[INFO] avPlayer DEALLOCATING NOW");
     [[NSNotificationCenter defaultCenter] removeObserver:self];
     [avPlayer release];
     // release any resources that have been retained by the module
@@ -65,29 +66,48 @@
 
 - (void)stopWatchingForChangesTimer
 {
-    dispatch_async(dispatch_get_main_queue(), ^{
+    if (![NSThread isMainThread]) {
+        TiThreadPerformOnMainThread(^{[self stopWatchingForChangesTimer];}, YES);
+        return;
+    }
+    
+    NSLog(@"[INFO] avPlayer : stopWatchingForChangesTimer");
+
+   // dispatch_async(dispatch_get_main_queue(), ^{
         
         [progressUpdateTimer invalidate];
         RELEASE_TO_NIL(progressUpdateTimer);
         
-    });
+  //  });
     
 }
 - (void)startWatchingForChangesTimer
 {
     
-    dispatch_async(dispatch_get_main_queue(), ^{
+    if (![NSThread isMainThread]) {
+        TiThreadPerformOnMainThread(^{[self startWatchingForChangesTimer];}, YES);
+        return;
+    }
+    
+     NSLog(@"[INFO] avPlayer : startWatchingForChangesTimer");
+    
+   // dispatch_async(dispatch_get_main_queue(), ^{
         progressUpdateTimer = [[NSTimer scheduledTimerWithTimeInterval:0.1
                                                                 target:self
                                                               selector:@selector(updateProgress:)
                                                               userInfo:nil
                                                                repeats:YES] retain];
-    });
+   // });
     
 }
 
 - (void)setUrl:(id)value
 {
+    if (![NSThread isMainThread]) {
+        TiThreadPerformOnMainThread(^{[self setUrl:value];}, YES);
+        return;
+    }
+    
     
     // What to do if sent NULL. Maybe stop and tear it down.
     isStream = NO;
@@ -104,7 +124,7 @@
                                                          NULL,
                                                          NULL,
                                                          kCFStringEncodingUTF8) autorelease];
-    NSLog(@"[INFO] avPlayer setUrl : %@", url);
+    NSLog(@"[INFO] avPlayer : setUrl : %@", url);
     
     
     // Stop if needed
@@ -118,7 +138,7 @@
         
         
         if([avPlayer currentItem] != nil){
-            [avPlayer.currentItem removeObserver:self forKeyPath:@"timedMetadata"];
+            //[avPlayer.currentItem removeObserver:self forKeyPath:@"timedMetadata"];
             [avPlayer.currentItem removeObserver:self forKeyPath:@"status"];
         }
         
@@ -127,22 +147,23 @@
     
     status = AV_PLAYER_STATUS_UNKNOWN;
     state = AV_PLAYER_STATE_UNKNOWN;
-    /*
+    
     NSMutableDictionary * headers = [NSMutableDictionary dictionary];
-    [headers setObject:@"KossoTiAVPlayerModule" forKey:@"User-Agent"];
+    [headers setObject:@"Mozilla/5.0 (compatible; MSIE 8.0; Windows NT 6.0; SV1; AmazingAppsiOS 1.0.0)" forKey:@"User-Agent"];
     AVURLAsset * asset = [AVURLAsset URLAssetWithURL:[NSURL URLWithString:escapedValue] options:@{@"AVURLAssetHTTPHeaderFieldsKey" : headers}];
     AVPlayerItem * item = [AVPlayerItem playerItemWithAsset:asset];
     avPlayer = [[AVPlayer alloc] initWithPlayerItem:item];
-    */
+    
+    /*
     NSDictionary *dictionary =
     [[NSDictionary alloc] initWithObjectsAndKeys:
      @"Your desired user agent", @"UserAgent", nil];
     [[NSUserDefaults standardUserDefaults] registerDefaults:dictionary];
     [dictionary release];
-
+     */
 
     //if(!avPlayer){
-    avPlayer = [[AVPlayer alloc] initWithURL:[NSURL URLWithString:escapedValue]];
+    // avPlayer = [[AVPlayer alloc] initWithURL:[NSURL URLWithString:escapedValue]];
     //} else {
     //    [avPlayer replaceCurrentItemWithPlayerItem:[AVPlayerItem playerItemWithURL:[NSURL URLWithString:escapedValue]]];
     //}
@@ -160,11 +181,13 @@
                                                object:[avPlayer currentItem]];
     
     [avPlayer.currentItem addObserver:self forKeyPath:@"status" options:NSKeyValueObservingOptionNew context:nil];
-    [avPlayer.currentItem addObserver:self forKeyPath:@"timedMetadata" options:nil context:nil];
+    //[avPlayer.currentItem addObserver:self forKeyPath:@"timedMetadata" options:nil context:nil];
     
 }
 
 // KVO
+// exmaple : http://stackoverflow.com/questions/24969523/simple-kvo-example
+
 - (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object
                         change:(NSDictionary *)change context:(void *)context {
     if (object == avPlayer.currentItem && [keyPath isEqualToString:@"status"]) {
@@ -182,10 +205,11 @@
             //NSLog(@"[INFO] KVO avPlayer set status AV_PLAYER_STATUS_FAILED");
             status = AV_PLAYER_STATUS_FAILED;
             state = AV_PLAYER_STATE_FAILED;
+            
             // fire an error event
             [self fireErrorEvent:avPlayer.currentItem.error];
             [avPlayer.currentItem removeObserver:self forKeyPath:@"status"];
-            [avPlayer.currentItem removeObserver:self forKeyPath:@"timedMetadata"];
+            //[avPlayer.currentItem removeObserver:self forKeyPath:@"timedMetadata"];
             [[NSNotificationCenter defaultCenter] removeObserver:self];
             
             return;
@@ -228,7 +252,9 @@
         
         
         
-    } else
+    } /* else
+       // removing for now until I get the threading sorted.
+       
         if ([keyPath isEqualToString:@"timedMetadata"])
         {
             NSLog(@"[INFO] currentItem timedMetadata!!");
@@ -240,7 +266,7 @@
             
              for (AVMetadataItem* metadata in _playerItem.timedMetadata)
              {
-             NSLog(@"[INFO] \nkey: %@\nkeySpace: %@\ncommonKey: %@\nvalue: %@", [metadata.key description], metadata.keySpace, metadata.commonKey, metadata.stringValue);
+             NSLog(@"[INFO] timedMetadata: key: %@\nkeySpace: %@\ncommonKey: %@\nvalue: %@", [metadata.key description], metadata.keySpace, metadata.commonKey, metadata.stringValue);
              }
              
             
@@ -248,51 +274,25 @@
              
              NSArray *mmetadata = [_playerItem.asset commonMetadata];
              for ( AVMetadataItem* item in mmetadata ) {
-             NSString *key = [item commonKey];
-             NSString *value = [item stringValue];
-             NSLog(@"[INFO] METADATA : key = %@, value = %@", key, value);
+                 NSString *key = [item commonKey];
+                 NSString *value = [item stringValue];
+                 NSLog(@"[INFO] commonMetadata: key = %@, value = %@", key, value);
              }
+
+            
+            NSArray *etadata = [_playerItem.asset metadata];
+            for ( AVMetadataItem* item in etadata ) {
+                NSString *key = [item commonKey];
+                NSString *value = [item stringValue];
+                NSLog(@"[INFO] metadata: key = %@, value = %@", key, value);
+            }
             
             
         }
+       */
     
 }
 
-/*
- - (void)readyStatusUpdate
- {
- 
- if(NUMINT(avPlayer.status)!=lastPlayerReadyStatus){
- NSLog(@"[INFO] readyStatusUpdate: %d", avPlayer.status);
- //NSLog(@"[INFO] ASSET : %@", avPlayer.currentItem.asset);
- 
- lastPlayerReadyStatus = NUMINT(avPlayer.status);
- status = lastPlayerReadyStatus;
- 
- if(avPlayer.status == AVPlayerStatusReadyToPlay){
- status = AV_PLAYER_STATE_READY;
- // Oddly, even when I give this a dummy url, it still gives AVPlayerStatusReadyToPlay ?
- // However, the AVAsset will be null.
- if(avPlayer.currentItem.asset==nil){
- NSLog(@"[INFO] ASSET IS NULL!");
- status = AV_PLAYER_STATUS_FAILED;
- lastPlayerReadyStatus = NUMINT(status);
- }
- }
- 
- @synchronized(self){
- 
- if ([self _hasListeners:@"readystatuschange"]) {
- NSDictionary *event = [NSDictionary dictionaryWithObjectsAndKeys:
- lastPlayerReadyStatus,             @"status",
- self,                        @"source",
- @"readystatuschange",        @"type",nil];
- [self fireEvent:@"readystatuschange" withObject:event];
- }
- }
- }
- }
- */
 
 
 - (void)playerItemDidReachEnd:(NSNotification *)notification
@@ -316,6 +316,13 @@
 
 - (void)start:(id)args
 {
+
+    if (![NSThread isMainThread]) {
+        TiThreadPerformOnMainThread(^{[self start:args];}, YES);
+        return;
+    }
+    
+    
     
     [self stopWatchingForChangesTimer];
     [self startWatchingForChangesTimer];
@@ -332,6 +339,11 @@
 
 -(void)play:(id)args
 {
+    if (![NSThread isMainThread]) {
+        TiThreadPerformOnMainThread(^{[self play:args];}, YES);
+        return;
+    }
+    
     @synchronized(self)
     {
         [avPlayer play];
@@ -342,6 +354,10 @@
 
 - (void)stop:(id)args
 {
+    if (![NSThread isMainThread]) {
+        TiThreadPerformOnMainThread(^{[self stop:args];}, YES);
+        return;
+    }
     
     @synchronized(self)
     {
@@ -362,6 +378,11 @@
 
 - (void)pause:(id)args
 {
+    if (![NSThread isMainThread]) {
+        TiThreadPerformOnMainThread(^{[self pause:args];}, YES);
+        return;
+    }
+    
     @synchronized(self)
     {
         [avPlayer pause];
@@ -371,6 +392,10 @@
 
 - (void)speed:(id)args
 {
+    if (![NSThread isMainThread]) {
+        TiThreadPerformOnMainThread(^{[self speed:args];}, YES);
+        return;
+    }
     rate = [TiUtils floatValue:[args objectAtIndex:0]];
     avPlayer.rate = rate;
 }
@@ -379,6 +404,11 @@
 
 - (void)seek:(id)args
 {
+    if (![NSThread isMainThread]) {
+        TiThreadPerformOnMainThread(^{[self seek:args];}, YES);
+        return;
+    }
+    
     @synchronized(self)
     {
         state = AV_PLAYER_STATE_SEEKING;
@@ -392,7 +422,7 @@
         CMTime cmTime = CMTimeMake(seconds, 1);
         
         if(CMTIME_IS_VALID(cmTime)){
-            dispatch_sync(dispatch_get_main_queue(), ^{
+          //  dispatch_sync(dispatch_get_main_queue(), ^{
                 [avPlayer.currentItem seekToTime: cmTime
                  //   toleranceBefore: kCMTimeZero
                  //    toleranceAfter: kCMTimeZero
@@ -401,33 +431,40 @@
                                    [self fireSeekCompleteEvent];
                                }
                  ];
-            });
+         //   });
         }
     }
 }
 
 - (void)seekThenPlay:(id)args
 {
-    [avPlayer pause];
-    playing = NO;
-    // milliseconds are sent for compatibility with Android Ti.Media.audioPlayer
-    float seconds = [TiUtils floatValue:[args objectAtIndex:0]];
-    seconds /= 1000;
-    //NSLog(@"[INFO] SEEK request to : %f", seconds);
-    CMTime cmTime = CMTimeMake(seconds, 1);
-    state = AV_PLAYER_STATE_SEEKING;
-    if(CMTIME_IS_VALID(cmTime)){
-        dispatch_sync(dispatch_get_main_queue(), ^{
-            [avPlayer.currentItem seekToTime: cmTime
-             //   toleranceBefore: kCMTimeZero
-             //    toleranceAfter: kCMTimeZero
-                           completionHandler: ^(BOOL finished) {
-                               state = AV_PLAYER_STATE_SEEKING_COMPLETE;
-                               [self fireSeekCompleteEvent];
-                               [self play:YES];
-                           }
-             ];
-        });
+    if (![NSThread isMainThread]) {
+        TiThreadPerformOnMainThread(^{[self seekThenPlay:args];}, YES);
+        return;
+    }
+    @synchronized(self)
+    {
+        [avPlayer pause];
+        playing = NO;
+        // milliseconds are sent for compatibility with Android Ti.Media.audioPlayer
+        float seconds = [TiUtils floatValue:[args objectAtIndex:0]];
+        seconds /= 1000;
+        //NSLog(@"[INFO] SEEK request to : %f", seconds);
+        CMTime cmTime = CMTimeMake(seconds, 1);
+        state = AV_PLAYER_STATE_SEEKING;
+        if(CMTIME_IS_VALID(cmTime)){
+           // dispatch_sync(dispatch_get_main_queue(), ^{
+                [avPlayer.currentItem seekToTime: cmTime
+                 //   toleranceBefore: kCMTimeZero
+                 //    toleranceAfter: kCMTimeZero
+                               completionHandler: ^(BOOL finished) {
+                                   state = AV_PLAYER_STATE_SEEKING_COMPLETE;
+                                   [self fireSeekCompleteEvent];
+                                   [self play:YES];
+                               }
+                 ];
+         //   });
+        }
     }
 }
 
