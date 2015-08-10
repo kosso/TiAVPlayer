@@ -36,8 +36,10 @@
 @synthesize state;
 @synthesize playing;
 @synthesize paused;
+@synthesize buffering;
 @synthesize rate;
 @synthesize time;
+
 
 #define AV_PLAYER_STATE_UNKNOWN 0;
 #define AV_PLAYER_STATE_READY 1;
@@ -57,11 +59,77 @@
 
 -(void)dealloc
 {
-    NSLog(@"[INFO] avPlayer DEALLOCATING NOW");
-    [[NSNotificationCenter defaultCenter] removeObserver:self];
-    [avPlayer release];
+    if(avPlayer!=nil){
+        NSLog(@"[INFO] avPlayer DEALLOCATING NOW");
+        [[NSNotificationCenter defaultCenter] removeObserver:self];
+        [avPlayer release];
+    }
     // release any resources that have been retained by the module
     [super dealloc];
+}
+
+-(void)destroy:(id)args
+{
+    if (![NSThread isMainThread]) {
+  //       NSLog(@"[INFO] NOT ON MAIN THREAD... avPlayer : DESTROY!");
+        TiThreadPerformOnMainThread(^{[self destroy:args];}, YES);
+        return;
+    }
+    
+    
+    
+    //[[NSNotificationCenter defaultCenter] removeObserver:self];
+    //[progressUpdateTimer invalidate];
+    //RELEASE_TO_NIL(progressUpdateTimer);
+    
+    
+    @synchronized(self){
+        NSLog(@"[INFO] avPlayer : DESTROY!");
+     
+        if(progressUpdateTimer!=nil){
+             NSLog(@"[INFO] avPlayer : RELEASE TIMER!");
+            [progressUpdateTimer invalidate];
+            RELEASE_TO_NIL(progressUpdateTimer);
+        }
+     
+        if(avPlayer!=nil){
+            
+            NSLog(@"[INFO] avPlayer : EMPTY!");
+            
+            if(playing){
+                NSLog(@"[INFO] forcing stop");
+                avPlayer.rate = 0.0f;
+                playing = NO;
+            }
+            
+            
+            if([avPlayer currentItem] != nil){
+                
+                NSLog(@"[INFO] remove item observers");
+                //[avPlayer.currentItem removeObserver:self forKeyPath:@"timedMetadata"];
+                [avPlayer.currentItem removeObserver:self forKeyPath:@"status"];
+                
+                 NSLog(@"[INFO] remove notifications");
+                [[NSNotificationCenter defaultCenter] removeObserver:self];
+                
+                
+            }
+            
+            RELEASE_TO_NIL(avPlayer);
+
+            
+        }
+        
+    }
+     
+    
+    
+  //  RELEASE_TO_NIL(avPlayer);
+    //[avPlayer release];
+    
+    
+    
+    
 }
 
 - (void)stopWatchingForChangesTimer
@@ -148,12 +216,22 @@
     status = AV_PLAYER_STATUS_UNKNOWN;
     state = AV_PLAYER_STATE_UNKNOWN;
     
+    if([escapedValue length] == 0){
+        
+        NSLog(@"[INFO] avPlayer : URL WAS NIL. stop here. ");
+        return;
+        
+    }
+    
+    
+    // Attempts to override the AVAssetURL loading headers.. Not having much luck. Could be a 'private' API.
+    /*
     NSMutableDictionary * headers = [NSMutableDictionary dictionary];
     [headers setObject:@"Mozilla/5.0 (compatible; MSIE 8.0; Windows NT 6.0; SV1; AmazingAppsiOS 1.0.0)" forKey:@"User-Agent"];
     AVURLAsset * asset = [AVURLAsset URLAssetWithURL:[NSURL URLWithString:escapedValue] options:@{@"AVURLAssetHTTPHeaderFieldsKey" : headers}];
     AVPlayerItem * item = [AVPlayerItem playerItemWithAsset:asset];
     avPlayer = [[AVPlayer alloc] initWithPlayerItem:item];
-    
+    */
     /*
     NSDictionary *dictionary =
     [[NSDictionary alloc] initWithObjectsAndKeys:
@@ -162,26 +240,26 @@
     [dictionary release];
      */
 
-    //if(!avPlayer){
-    // avPlayer = [[AVPlayer alloc] initWithURL:[NSURL URLWithString:escapedValue]];
-    //} else {
-    //    [avPlayer replaceCurrentItemWithPlayerItem:[AVPlayerItem playerItemWithURL:[NSURL URLWithString:escapedValue]]];
-    //}
-    // Could do this instead of teardown/recreate..
-    
-    // (re)start a timer to check progress
+    avPlayer = [[AVPlayer alloc] initWithURL:[NSURL URLWithString:escapedValue]];
     
     // start the timer to check for changes/progress, etc.
     [self startWatchingForChangesTimer];
-    
     
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(playerItemDidReachEnd:)
                                                  name:AVPlayerItemDidPlayToEndTimeNotification
                                                object:[avPlayer currentItem]];
     
+    // KVO for player readyiness status after setting item asset url. 
     [avPlayer.currentItem addObserver:self forKeyPath:@"status" options:NSKeyValueObservingOptionNew context:nil];
+    
+    // KVO for timed metadata. Live streams can send out this data.  This is not for ID3 tags. I need to figure that out.
     //[avPlayer.currentItem addObserver:self forKeyPath:@"timedMetadata" options:nil context:nil];
+    
+        // KVO For buffering..
+    // [avPlayer.currentItem addObserver:self forKeyPath:@"playbackBufferEmpty" options:NSKeyValueObservingOptionNew context:nil];
+    // [avPlayer.currentItem addObserver:self forKeyPath:@"playbackLikelyToKeepUp" options:NSKeyValueObservingOptionNew context:nil];
+    
     
 }
 
@@ -208,9 +286,14 @@
             
             // fire an error event
             [self fireErrorEvent:avPlayer.currentItem.error];
-            [avPlayer.currentItem removeObserver:self forKeyPath:@"status"];
+            
+            
+          //  [avPlayer.currentItem removeObserver:self forKeyPath:@"status"];
             //[avPlayer.currentItem removeObserver:self forKeyPath:@"timedMetadata"];
-            [[NSNotificationCenter defaultCenter] removeObserver:self];
+          //  [[NSNotificationCenter defaultCenter] removeObserver:self];
+            
+            // cleanup
+            [self destroy:YES];
             
             return;
         }
@@ -321,7 +404,10 @@
         TiThreadPerformOnMainThread(^{[self start:args];}, YES);
         return;
     }
-    
+    if(avPlayer==nil){
+        NSLog(@"[INFO] avPlayer : nothing to start");
+        return;
+    }
     
     
     [self stopWatchingForChangesTimer];
@@ -343,6 +429,10 @@
         TiThreadPerformOnMainThread(^{[self play:args];}, YES);
         return;
     }
+    if(avPlayer==nil){
+        NSLog(@"[INFO] avPlayer : nothing to play");
+        return;
+    }
     
     @synchronized(self)
     {
@@ -356,6 +446,11 @@
 {
     if (![NSThread isMainThread]) {
         TiThreadPerformOnMainThread(^{[self stop:args];}, YES);
+        return;
+    }
+
+    if(avPlayer==nil){
+        NSLog(@"[INFO] avPlayer : nothing to stop");
         return;
     }
     
@@ -382,7 +477,10 @@
         TiThreadPerformOnMainThread(^{[self pause:args];}, YES);
         return;
     }
-    
+    if(avPlayer==nil){
+        NSLog(@"[INFO] avPlayer : nothing to pause");
+        return;
+    }
     @synchronized(self)
     {
         [avPlayer pause];
@@ -394,6 +492,10 @@
 {
     if (![NSThread isMainThread]) {
         TiThreadPerformOnMainThread(^{[self speed:args];}, YES);
+        return;
+    }
+    if(avPlayer==nil){
+        NSLog(@"[INFO] avPlayer : nothing to speed");
         return;
     }
     rate = [TiUtils floatValue:[args objectAtIndex:0]];
@@ -408,7 +510,10 @@
         TiThreadPerformOnMainThread(^{[self seek:args];}, YES);
         return;
     }
-    
+    if(avPlayer==nil){
+        NSLog(@"[INFO] avPlayer : nothing to seek");
+        return;
+    }
     @synchronized(self)
     {
         state = AV_PLAYER_STATE_SEEKING;
@@ -442,6 +547,10 @@
         TiThreadPerformOnMainThread(^{[self seekThenPlay:args];}, YES);
         return;
     }
+    if(avPlayer==nil){
+        NSLog(@"[INFO] avPlayer : nothing to seekThenPlay");
+        return;
+    }
     @synchronized(self)
     {
         [avPlayer pause];
@@ -470,6 +579,11 @@
 
 - (void)updateProgress:(NSTimer *)updateTimer
 {
+
+    if(avPlayer==nil){
+        NSLog(@"[INFO] avPlayer : nothing to updateProgress");
+        return;
+    }
     
     // return;
     
@@ -583,6 +697,10 @@
 
 -(void)fireProgressEvent:(double)value
 {
+    if(avPlayer==nil){
+        NSLog(@"[INFO] avPlayer : nothing to fireProgressEvent");
+        return;
+    }
     if ([self _hasListeners:@"progress"]) {
         NSDictionary *event = [NSDictionary dictionaryWithObjectsAndKeys:
                                NUMDOUBLE(value * 1000),      @"time",

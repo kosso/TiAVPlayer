@@ -22,6 +22,7 @@
     NSString *url;                  // the url to the audio
     NSTimer *progressUpdateTimer;
     BOOL playing;
+    BOOL buffering;
     BOOL paused;
     BOOL stopped;
     BOOL durationavailable;         // flag so it only fires once
@@ -40,9 +41,12 @@
 
 @property (nonatomic, assign) BOOL playing;
 @property (nonatomic, assign) BOOL paused;
+@property (nonatomic, assign) BOOL buffering;
+
 
 @property(nonatomic, readonly) NSError *error;
 
+- (void)destroy:(id)args;
 - (void)start:(id)args;
 - (void)play:(id)args;
 - (void)stop:(id)args;
