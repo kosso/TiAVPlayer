@@ -11,6 +11,7 @@ A Titanium module for (hopefully) better audioplayer control than the current Ti
  
  - THIS IS A WORK IN PROGRESS!
  
+ - USE AT YOUR OWN RISK
  **/
 
 

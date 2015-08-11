@@ -28,7 +28,7 @@
     BOOL durationavailable;         // flag so it only fires once
     int lastPlayerState;          // playback state
     NSNumber *lastPlayerReadyStatus;    // player status
-    BOOL *isStream;                 // for live radio. disables durationavailable
+    BOOL live_stream;                 // for live radio. disables durationavailable
     double time;                    // current time
     float rate;
  
@@ -42,6 +42,7 @@
 @property (nonatomic, assign) BOOL playing;
 @property (nonatomic, assign) BOOL paused;
 @property (nonatomic, assign) BOOL buffering;
+@property (nonatomic, assign) BOOL live_stream;
 
 
 @property(nonatomic, readonly) NSError *error;
