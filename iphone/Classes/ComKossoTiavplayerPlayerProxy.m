@@ -40,22 +40,9 @@
 @synthesize buffering;
 @synthesize rate;
 @synthesize time;
+@synthesize pausedForAudioSessionInterruption;
 
 
-#define AV_PLAYER_STATE_UNKNOWN 0;
-#define AV_PLAYER_STATE_READY 1;
-#define AV_PLAYER_STATE_WAITING_FOR_DATA 2;
-#define AV_PLAYER_STATE_PLAYING 3;
-#define AV_PLAYER_STATE_PAUSED 4;
-#define AV_PLAYER_STATE_STOPPING 5;
-#define AV_PLAYER_STATE_STOPPED 6;
-#define AV_PLAYER_STATE_SEEKING 7;
-#define AV_PLAYER_STATE_SEEKING_COMPLETE 8;
-#define AV_PLAYER_STATE_FAILED 9;
-
-#define AV_PLAYER_STATUS_UNKNOWN 0;
-#define AV_PLAYER_STATUS_READY_TO_PLAY 1;
-#define AV_PLAYER_STATUS_FAILED 2;
 
 
 -(void)dealloc
@@ -86,6 +73,9 @@
     }
     @synchronized(self){
         NSLog(@"[INFO] avPlayer : DESTROY!");
+        
+        // do I need to reset the BOOL flags too? live_stream, playing etc?
+        
         if(progressUpdateTimer!=nil){
              //NSLog(@"[INFO] avPlayer : RELEASE TIMER!");
             [progressUpdateTimer invalidate];
@@ -226,7 +216,12 @@
                                                  name:AVPlayerItemDidPlayToEndTimeNotification
                                                object:[avPlayer currentItem]];
     
-    // KVO for player readyiness status after setting item asset url. 
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(audioSessionInterrupted:)
+                                                 name:AVAudioSessionInterruptionNotification
+                                               object:nil];
+    
+    // KVO for player readyiness status after setting item asset url.
     [avPlayer.currentItem addObserver:self forKeyPath:@"status" options:NSKeyValueObservingOptionNew context:nil];
     
     // KVO for timed metadata. Live streams can send out this data.  This is not for ID3 tags. I need to figure that out.
@@ -237,6 +232,40 @@
     [avPlayer.currentItem addObserver:self forKeyPath:@"playbackBufferFull" options:NSKeyValueObservingOptionNew context:nil];
     [avPlayer.currentItem.asset addObserver:self forKeyPath:@"duration" options:NSKeyValueObservingOptionInitial context:nil];
 
+}
+
+- (void)audioSessionInterrupted:(NSNotification *)notification
+{
+    int interruptionType = [notification.userInfo[AVAudioSessionInterruptionTypeKey] intValue];
+    if (interruptionType == AVAudioSessionInterruptionTypeBegan && !pausedForAudioSessionInterruption) {
+        
+        NSLog(@"[INFO] avPlayer : Audio session was interrupted");
+    
+        if (playing == YES || paused == YES || buffering == YES) {
+            
+            
+            NSLog(@"[INFO] avPlayer : Pausing for audio session interruption");
+            pausedForAudioSessionInterruption = YES;
+            if(!live_stream){
+                [self pause:YES];
+            } else {
+                // totally stop a live stream. Pausing (or stopping) isn't such a good idea.
+                pausedForAudioSessionInterruption = NO;
+                [self destroy:YES];
+                
+            }
+        }
+    } else if (interruptionType == AVAudioSessionInterruptionTypeEnded && avPlayer!=nil) {
+        NSLog(@"[INFO] avPlayer : Audio session interruption has ended");
+
+        if ([notification.userInfo[AVAudioSessionInterruptionOptionKey] intValue] == AVAudioSessionInterruptionOptionShouldResume) {
+            if (pausedForAudioSessionInterruption) {
+                NSLog(@"[INFO] avPlayer : Resuming after audio session interruption");
+                [self play:YES];
+            }
+        }
+        pausedForAudioSessionInterruption = NO;
+    }
 }
 
 // KVO
@@ -430,6 +459,7 @@
     {
         [avPlayer pause];
         paused = YES;
+        state = AV_PLAYER_STATE_PAUSED;
     }
 }
 
@@ -582,6 +612,9 @@
             state = AV_PLAYER_STATE_PAUSED;
         } else if(stopped){
             state = AV_PLAYER_STATE_STOPPED;
+        }
+        if(pausedForAudioSessionInterruption){
+            state = AV_PLAYER_STATE_INTERRUPTED;
         }
         if(state != lastPlayerState){
             // NSLog(@"[INFO] status has changed %d", status);

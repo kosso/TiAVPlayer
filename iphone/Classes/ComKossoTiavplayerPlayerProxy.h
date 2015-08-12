@@ -31,8 +31,28 @@
     BOOL live_stream;                 // for live radio. disables durationavailable
     double time;                    // current time
     float rate;
+    BOOL pausedForAudioSessionInterruption;
  
 }
+
+
+#define AV_PLAYER_STATE_UNKNOWN 0;
+#define AV_PLAYER_STATE_READY 1;
+#define AV_PLAYER_STATE_WAITING_FOR_DATA 2;
+#define AV_PLAYER_STATE_PLAYING 3;
+#define AV_PLAYER_STATE_PAUSED 4;
+#define AV_PLAYER_STATE_STOPPING 5;
+#define AV_PLAYER_STATE_STOPPED 6;
+#define AV_PLAYER_STATE_SEEKING 7;
+#define AV_PLAYER_STATE_SEEKING_COMPLETE 8;
+#define AV_PLAYER_STATE_FAILED 9;
+#define AV_PLAYER_STATE_INTERRUPTED 10;
+
+#define AV_PLAYER_STATUS_UNKNOWN 0;
+#define AV_PLAYER_STATUS_READY_TO_PLAY 1;
+#define AV_PLAYER_STATUS_FAILED 2;
+
+
 @property (nonatomic, readwrite, assign) float rate;
 @property (nonatomic, readwrite, assign) double duration;
 @property (nonatomic, readwrite, assign) double time;
@@ -43,6 +63,8 @@
 @property (nonatomic, assign) BOOL paused;
 @property (nonatomic, assign) BOOL buffering;
 @property (nonatomic, assign) BOOL live_stream;
+@property (nonatomic, assign) BOOL pausedForAudioSessionInterruption;
+
 
 
 @property(nonatomic, readonly) NSError *error;
