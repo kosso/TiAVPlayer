@@ -195,6 +195,7 @@
     // https://developer.apple.com/library/ios/documentation/AudioVideo/Conceptual/AVFoundationPG/Articles/02_Playback.html
     // If an asset is not possible, it could be a live stream. So this method should fail.
     AVURLAsset * asset = [AVURLAsset URLAssetWithURL:[NSURL URLWithString:escapedValue] options:nil];
+    // not behaving as expected/understood.
     if(asset.tracks!=nil){
         NSLog(@"[INFO] AV ASSET LOADED OK");
     } else {
@@ -246,14 +247,9 @@
             
             NSLog(@"[INFO] avPlayer : Pausing for audio session interruption");
             pausedForAudioSessionInterruption = YES;
-            if(!live_stream){
-                [self pause:YES];
-            } else {
-                // totally stop a live stream. Pausing (or stopping) isn't such a good idea.
-                pausedForAudioSessionInterruption = NO;
-                [self destroy:YES];
-                
-            }
+            // Let the client decide what to do if it's a live_stream.
+            [self pause:YES];
+            
         }
     } else if (interruptionType == AVAudioSessionInterruptionTypeEnded && avPlayer!=nil) {
         NSLog(@"[INFO] avPlayer : Audio session interruption has ended");
@@ -269,7 +265,7 @@
 }
 
 // KVO
-// exmaple : http://stackoverflow.com/questions/24969523/simple-kvo-example
+// example : http://stackoverflow.com/questions/24969523/simple-kvo-example
 
 - (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object
                         change:(NSDictionary *)change context:(void *)context {
@@ -327,36 +323,30 @@
                 [self updateDuration];
             }
         }
-    }
-    /* else
-       //  Removing for now until I get the threading sorted.
-        //
-        if ([keyPath isEqualToString:@"timedMetadata"])
-        {
-            NSLog(@"[INFO] currentItem timedMetadata!!");
-     
-            AVPlayerItem* _playerItem = object;
+    } /* else if ([keyPath isEqualToString:@"timedMetadata"]) {
+        
+        NSLog(@"[INFO] currentItem timedMetadata!!");
+        AVPlayerItem* _playerItem = object;
 
-             for (AVMetadataItem* metadata in _playerItem.timedMetadata)
-             {
-                NSLog(@"[INFO] timedMetadata: key: %@\nkeySpace: %@\ncommonKey: %@\nvalue: %@", [metadata.key description], metadata.keySpace, metadata.commonKey, metadata.stringValue);
-             }
-             //NSArray *mmetadata = [_playerItem.asset metadata]; // iOS 8+
-             
-             NSArray *mmetadata = [_playerItem.asset commonMetadata];
-             for ( AVMetadataItem* item in mmetadata ) {
-                 NSString *key = [item commonKey];
-                 NSString *value = [item stringValue];
-                 NSLog(@"[INFO] commonMetadata: key = %@, value = %@", key, value);
-             }
-            NSArray *etadata = [_playerItem.asset metadata];
-            for ( AVMetadataItem* item in etadata ) {
-                NSString *key = [item commonKey];
-                NSString *value = [item stringValue];
-                NSLog(@"[INFO] metadata: key = %@, value = %@", key, value);
-            }
+         for (AVMetadataItem* metadata in _playerItem.timedMetadata)
+         {
+            NSLog(@"[INFO] timedMetadata: key: %@\nkeySpace: %@\ncommonKey: %@\nvalue: %@", [metadata.key description], metadata.keySpace, metadata.commonKey, metadata.stringValue);
+         }
+         //NSArray *mmetadata = [_playerItem.asset metadata]; // iOS 8+
+         
+         NSArray *mmetadata = [_playerItem.asset commonMetadata];
+         for ( AVMetadataItem* item in mmetadata ) {
+             NSString *key = [item commonKey];
+             NSString *value = [item stringValue];
+             NSLog(@"[INFO] commonMetadata: key = %@, value = %@", key, value);
+         }
+        NSArray *etadata = [_playerItem.asset metadata];
+        for ( AVMetadataItem* item in etadata ) {
+            NSString *key = [item commonKey];
+            NSString *value = [item stringValue];
+            NSLog(@"[INFO] metadata: key = %@, value = %@", key, value);
         }
-       */
+    } */
     
 }
 
