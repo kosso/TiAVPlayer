@@ -212,15 +212,36 @@
     // start the timer to check for changes/progress, etc.
     [self startWatchingForChangesTimer];
     
+    // Notify end of audio file.
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(playerItemDidReachEnd:)
                                                  name:AVPlayerItemDidPlayToEndTimeNotification
                                                object:[avPlayer currentItem]];
     
+    // Notify audio interruption. eg: Siri, alarm, calls.
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(audioSessionInterrupted:)
                                                  name:AVAudioSessionInterruptionNotification
                                                object:nil];
+    
+    // Notify if audio ends for other reason than ending. eg: network dropout.
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(playerItemFailedToPlayToEndTime:)
+                                                 name:AVPlayerItemFailedToPlayToEndTimeNotification
+                                               object:[avPlayer currentItem]];
+
+    // Notify media server reset
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(mediaServerDidReset:)
+                                                 name:AVAudioSessionMediaServicesWereResetNotification
+                                               object:nil];
+
+    // Notify media server lost/ended.
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(mediaServerDidEnd:)
+                                                 name:AVAudioSessionMediaServicesWereLostNotification
+                                               object:nil];
+
     
     // KVO for player readyiness status after setting item asset url.
     [avPlayer.currentItem addObserver:self forKeyPath:@"status" options:NSKeyValueObservingOptionNew context:nil];
@@ -235,25 +256,75 @@
 
 }
 
+
+
+- (void)mediaServerDidEnd:(NSNotification *)notification
+{
+    NSLog(@"[INFO] avPlayer : DID THE SERVER GO AWAY ? : mediaServerDidEnd notification ");
+    state = AV_PLAYER_STATE_INTERRUPTED;
+    paused = NO;
+    playing = NO;
+    // fire the complete event
+    [self fireCompleteEvent];
+    
+}
+
+
+
+- (void)mediaServerDidReset:(NSNotification *)notification
+{
+    NSLog(@"[INFO] avPlayer : DID THE SERVER RESET ? : mediaServerDidReset notification ");
+    state = AV_PLAYER_STATE_INTERRUPTED;
+    paused = NO;
+    playing = NO;
+    // fire the complete event
+    [self fireCompleteEvent];
+    
+    //[self destroy:YES];
+}
+
+
+
+- (void)playerItemFailedToPlayToEndTime:(NSNotification *)notification
+{
+    // This can happen when the network drops out.
+    NSLog(@"[INFO] avPlayer : DID THE NETWORK DROP OUT? : playerItemFailedToPlayToEndTime notification ");
+    
+    state = AV_PLAYER_STATE_INTERRUPTED;
+    paused = NO;
+    playing = NO;
+    // fire the complete event
+    [self fireCompleteEvent];
+    
+    //[self destroy:YES];
+}
+
+
+- (void)playerItemDidReachEnd:(NSNotification *)notification
+{
+    NSLog(@"[INFO] avPlayer ended ");
+    
+    //[self stopWatchingForChangesTimer];
+    state = AV_PLAYER_STATE_READY;
+    paused = NO;
+    playing = NO;
+    // fire the complete event
+    [self fireCompleteEvent];
+}
+
+
 - (void)audioSessionInterrupted:(NSNotification *)notification
 {
     int interruptionType = [notification.userInfo[AVAudioSessionInterruptionTypeKey] intValue];
     if (interruptionType == AVAudioSessionInterruptionTypeBegan && !pausedForAudioSessionInterruption) {
-        
         NSLog(@"[INFO] avPlayer : Audio session was interrupted");
-    
         if (playing == YES || paused == YES || buffering == YES) {
-            
-            
             NSLog(@"[INFO] avPlayer : Pausing for audio session interruption");
             pausedForAudioSessionInterruption = YES;
-            // Let the client decide what to do if it's a live_stream.
             [self pause:YES];
-            
         }
     } else if (interruptionType == AVAudioSessionInterruptionTypeEnded && avPlayer!=nil) {
         NSLog(@"[INFO] avPlayer : Audio session interruption has ended");
-
         if ([notification.userInfo[AVAudioSessionInterruptionOptionKey] intValue] == AVAudioSessionInterruptionOptionShouldResume) {
             if (pausedForAudioSessionInterruption) {
                 NSLog(@"[INFO] avPlayer : Resuming after audio session interruption");
@@ -352,17 +423,6 @@
 
 
 
-- (void)playerItemDidReachEnd:(NSNotification *)notification
-{
-    NSLog(@"[INFO] avPlayer ended ");
-
-    //[self stopWatchingForChangesTimer];
-    state = AV_PLAYER_STATE_READY;
-    paused = NO;
-    playing = NO;
-    // fire the complete event
-    [self fireCompleteEvent];
-}
 
 
 - (void)start:(id)args
