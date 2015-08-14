@@ -41,7 +41,7 @@
 @synthesize rate;
 @synthesize time;
 @synthesize pausedForAudioSessionInterruption;
-
+@synthesize live_flag;
 
 
 
@@ -103,29 +103,6 @@
     }
 }
 
-- (void)stopWatchingForChangesTimer
-{
-    if (![NSThread isMainThread]) {
-        TiThreadPerformOnMainThread(^{[self stopWatchingForChangesTimer];}, YES);
-        return;
-    }
-    //NSLog(@"[INFO] avPlayer : stopWatchingForChangesTimer");
-    [progressUpdateTimer invalidate];
-    RELEASE_TO_NIL(progressUpdateTimer);
-}
-- (void)startWatchingForChangesTimer
-{
-    if (![NSThread isMainThread]) {
-        TiThreadPerformOnMainThread(^{[self startWatchingForChangesTimer];}, YES);
-        return;
-    }
-     //NSLog(@"[INFO] avPlayer : startWatchingForChangesTimer");
-    progressUpdateTimer = [[NSTimer scheduledTimerWithTimeInterval:0.1
-                                                            target:self
-                                                          selector:@selector(updateProgress:)
-                                                          userInfo:nil
-                                                           repeats:YES] retain];
-}
 
 - (void)updateDuration
 {
@@ -157,14 +134,14 @@
                                                          NULL,
                                                          kCFStringEncodingUTF8) autorelease];
     NSLog(@"[INFO] avPlayer : setUrl : %@", url);
-    live_stream = NO;
-    duration = 0;
-    durationavailable = NO;
-    time = 0;
+
     // Stop if needed
     if(avPlayer!=nil){
-        [self stopWatchingForChangesTimer];
+        
         if(playing){
+            [progressUpdateTimer invalidate];
+            RELEASE_TO_NIL(progressUpdateTimer);
+
             NSLog(@"[INFO] forcing stop");
             avPlayer.rate = 0.0f;
             playing = NO;
@@ -179,8 +156,16 @@
         }
     }
     RELEASE_TO_NIL(avPlayer);
+    live_stream = NO;
+    live_flag = NO;
+    duration = 0;
+    durationavailable = NO;
+    time = 0;
+    
     status = AV_PLAYER_STATUS_UNKNOWN;
-    state = AV_PLAYER_STATE_UNKNOWN;
+    state = STATE_STARTING;
+    lastPlayerState = state;
+    
     if([escapedValue length] == 0){
         //NSLog(@"[INFO] avPlayer : URL WAS NIL. stop here. ");
         return;
@@ -209,9 +194,7 @@
     // or load the url to the AVPlayer directly
     avPlayer = [[AVPlayer alloc] initWithURL:[NSURL URLWithString:escapedValue]];
     
-    // start the timer to check for changes/progress, etc.
-    [self startWatchingForChangesTimer];
-    
+
     // Notify end of audio file.
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(playerItemDidReachEnd:)
@@ -261,7 +244,13 @@
 - (void)mediaServerDidEnd:(NSNotification *)notification
 {
     NSLog(@"[INFO] avPlayer : DID THE SERVER GO AWAY ? : mediaServerDidEnd notification ");
-    state = AV_PLAYER_STATE_INTERRUPTED;
+    
+    [progressUpdateTimer invalidate];
+    RELEASE_TO_NIL(progressUpdateTimer);
+    
+    
+    state = STATE_INTERRUPTED;
+    lastPlayerState = state;
     paused = NO;
     playing = NO;
     // fire the complete event
@@ -274,7 +263,12 @@
 - (void)mediaServerDidReset:(NSNotification *)notification
 {
     NSLog(@"[INFO] avPlayer : DID THE SERVER RESET ? : mediaServerDidReset notification ");
-    state = AV_PLAYER_STATE_INTERRUPTED;
+    
+    [progressUpdateTimer invalidate];
+    RELEASE_TO_NIL(progressUpdateTimer);
+    
+    state = STATE_INTERRUPTED;
+    lastPlayerState = state;
     paused = NO;
     playing = NO;
     // fire the complete event
@@ -289,8 +283,12 @@
 {
     // This can happen when the network drops out.
     NSLog(@"[INFO] avPlayer : DID THE NETWORK DROP OUT? : playerItemFailedToPlayToEndTime notification ");
+    [progressUpdateTimer invalidate];
+    RELEASE_TO_NIL(progressUpdateTimer);
     
-    state = AV_PLAYER_STATE_INTERRUPTED;
+    state = STATE_INTERRUPTED;
+    lastPlayerState = state;
+
     paused = NO;
     playing = NO;
     // fire the complete event
@@ -302,14 +300,26 @@
 
 - (void)playerItemDidReachEnd:(NSNotification *)notification
 {
-    NSLog(@"[INFO] avPlayer ended ");
+   // NSLog(@"[INFO] avPlayer ended ");
     
-    //[self stopWatchingForChangesTimer];
-    state = AV_PLAYER_STATE_READY;
+    [progressUpdateTimer invalidate];
+    RELEASE_TO_NIL(progressUpdateTimer);
+    
+    
+    // set time back to zero
+    [avPlayer.currentItem seekToTime: kCMTimeZero];
+
+    
+    state = STATE_STOPPING;
+    lastPlayerState = state;
     paused = NO;
     playing = NO;
     // fire the complete event
+     //NSLog(@"[INFO] avPlayer fire complete event ");
     [self fireCompleteEvent];
+    // NSLog(@"[INFO] avPlayer call stop ");
+    [self stop:YES];
+    
 }
 
 
@@ -324,10 +334,10 @@
             [self pause:YES];
         }
     } else if (interruptionType == AVAudioSessionInterruptionTypeEnded && avPlayer!=nil) {
-        NSLog(@"[INFO] avPlayer : Audio session interruption has ended");
+        //NSLog(@"[INFO] avPlayer : Audio session interruption has ended");
         if ([notification.userInfo[AVAudioSessionInterruptionOptionKey] intValue] == AVAudioSessionInterruptionOptionShouldResume) {
             if (pausedForAudioSessionInterruption) {
-                NSLog(@"[INFO] avPlayer : Resuming after audio session interruption");
+                //NSLog(@"[INFO] avPlayer : Resuming after audio session interruption");
                 [self play:YES];
             }
         }
@@ -347,6 +357,9 @@
         if (avPlayer.currentItem.status == AVPlayerStatusReadyToPlay) {
             // NSLog(@"[INFO] KVO avPlayer set status : AV_PLAYER_STATUS_READY_TO_PLAY");
             status = AV_PLAYER_STATUS_READY_TO_PLAY;
+            state = STATE_INITIALIZED;
+            lastPlayerState = state;
+            
         } else if (avPlayer.currentItem.status == AVPlayerStatusUnknown) {
             // NSLog(@"[INFO] KVO avPlayer set status : AV_PLAYER_STATUS_UNKNOWN");
             status = AV_PLAYER_STATUS_UNKNOWN;
@@ -354,7 +367,8 @@
             // something went wrong. avPlayer.error should contain some information
             //NSLog(@"[INFO] KVO avPlayer set status AV_PLAYER_STATUS_FAILED");
             status = AV_PLAYER_STATUS_FAILED;
-            state = AV_PLAYER_STATE_FAILED;
+            state = STATE_FAILED;
+            lastPlayerState = state;
             
             // fire an error event
             [self fireErrorEvent:avPlayer.currentItem.error];
@@ -368,6 +382,7 @@
         @synchronized(self){
             if ([self _hasListeners:@"playerstatuschange"]) {
                 NSDictionary *event = [NSDictionary dictionaryWithObjectsAndKeys:
+                                       NUMINT(state),              @"state",
                                        NUMINT(status),              @"status",
                                        self,                        @"source",
                                        @"playerstatuschange",         @"type",nil];
@@ -382,13 +397,14 @@
         //NSLog(@"[INFO] avPlayer LIKELY NOT BUFFERING");
         buffering = NO;
     } else if (object == avPlayer.currentItem && [keyPath isEqualToString:@"playbackBufferFull"]) {
-        NSLog(@"[INFO] avPlayer BUFFER IS FULL");
+        //NSLog(@"[INFO] avPlayer BUFFER IS FULL");
         buffering = NO;
     } else if (object == avPlayer.currentItem.asset && [keyPath isEqualToString:@"duration"]) {
         
          @synchronized(self){
              if( CMTimeCompare(avPlayer.currentItem.asset.duration, kCMTimeIndefinite) == 0){
-                 NSLog(@"[INFO] avPlayer.currentItem.asset.duration is INFINITE!");
+                 //NSLog(@"[INFO] avPlayer.currentItem.asset.duration is INFINITE! IS IT A LIVE STREAM??");
+                 live_stream = YES;
              } else {
                 // Update the duration and fire event
                 [self updateDuration];
@@ -421,8 +437,34 @@
     
 }
 
+/*
+ 
+// untested enhancements
+ 
+- (NSTimeInterval) availableDurationNSTimeInterval
+{
+    // returns the available NSTimeInterval (double) duration of an audio file loading from a url
+    NSArray *loadedTimeRanges = [[avPlayer currentItem] loadedTimeRanges];
+    // This is an array and could be discontinuous, but let's just look at the top one.
+    // We could dig deeper into the array and return provide ability to know if a requested time is seekable, for example.
+    CMTimeRange timeRange = [[loadedTimeRanges objectAtIndex:0] CMTimeRangeValue];
+    Float64 startSeconds = CMTimeGetSeconds(timeRange.start);
+    Float64 durationSeconds = CMTimeGetSeconds(timeRange.duration);
+    NSTimeInterval result = startSeconds + durationSeconds;
+    return result;
+}
 
-
+- (CMTime)availableDurationCMTime
+{
+    // returns the available CMTime duration of an audio file loading from a url
+    // This is an array and could be discontinuous, but let's just look at the top one.
+    NSValue *range = avPlayer.currentItem.loadedTimeRanges.firstObject;
+    if (range != nil){
+        return CMTimeRangeGetEnd(range.CMTimeRangeValue);
+    }
+    return kCMTimeZero;
+}
+*/
 
 
 - (void)start:(id)args
@@ -433,13 +475,11 @@
         return;
     }
     if(avPlayer==nil){
-        NSLog(@"[INFO] avPlayer : nothing to start");
+        //NSLog(@"[INFO] avPlayer : nothing to start");
         return;
     }
     
-    [self stopWatchingForChangesTimer];
-    [self startWatchingForChangesTimer];
-    
+    //NSLog(@"[INFO] avPlayer : start calling play on main thread");
     @synchronized(self)
     {
         [self play:args];
@@ -453,12 +493,22 @@
         return;
     }
     if(avPlayer==nil){
-        NSLog(@"[INFO] avPlayer : nothing to play");
+        //NSLog(@"[INFO] avPlayer : nothing to play");
         return;
     }
     
     @synchronized(self)
     {
+        
+       // NSLog(@"[INFO] avPlayer : play : start timer");
+        progressUpdateTimer = [[NSTimer scheduledTimerWithTimeInterval:0.1
+                                                                target:self
+                                                              selector:@selector(updateProgress:)
+                                                              userInfo:nil
+                                                               repeats:YES] retain];
+        
+        //NSLog(@"[INFO] avPlayer : play!");
+    
         [avPlayer play];
         paused = NO;
         playing = YES;
@@ -473,7 +523,7 @@
     }
 
     if(avPlayer==nil){
-        NSLog(@"[INFO] avPlayer : nothing to stop");
+        //NSLog(@"[INFO] avPlayer : nothing to stop");
         return;
     }
     
@@ -485,10 +535,18 @@
              toleranceBefore: kCMTimeZero
               toleranceAfter: kCMTimeZero
            completionHandler: ^(BOOL finished) {
-               NSLog(@"[INFO] avPlayer stopped and re-wound ");
-               state = AV_PLAYER_STATE_STOPPED;
+               //NSLog(@"[INFO] avPlayer stopped and re-wound ");
+               
+               [progressUpdateTimer invalidate];
+               RELEASE_TO_NIL(progressUpdateTimer);
+               
+               state = STATE_STOPPED;
                playing = NO;
                paused = NO;
+               live_flag = NO;
+               lastPlayerState = state;
+                //NSLog(@"[INFO] avPlayer firing stopped event ");
+               [self fireStateChangeEvent:lastPlayerState];
            }
          ];
     }
@@ -502,14 +560,21 @@
         return;
     }
     if(avPlayer==nil){
-        NSLog(@"[INFO] avPlayer : nothing to pause");
+        //NSLog(@"[INFO] avPlayer : nothing to pause");
         return;
     }
     @synchronized(self)
     {
         [avPlayer pause];
+        [progressUpdateTimer invalidate];
+        RELEASE_TO_NIL(progressUpdateTimer);
+        
+        state = STATE_PAUSED;
+        playing = NO;
         paused = YES;
-        state = AV_PLAYER_STATE_PAUSED;
+        lastPlayerState = state;
+        [self fireStateChangeEvent:lastPlayerState];
+        
     }
 }
 
@@ -520,7 +585,7 @@
         return;
     }
     if(avPlayer==nil){
-        NSLog(@"[INFO] avPlayer : nothing to speed");
+        //NSLog(@"[INFO] avPlayer : nothing to speed");
         return;
     }
     rate = [TiUtils floatValue:[args objectAtIndex:0]];
@@ -529,6 +594,7 @@
 
 // could test for available seek time ranges : https://developer.apple.com/library/ios/documentation/AVFoundation/Reference/AVPlayerItem_Class/index.html#//apple_ref/occ/instp/AVPlayerItem/seekableTimeRanges
 
+
 - (void)seek:(id)args
 {
     if (![NSThread isMainThread]) {
@@ -536,15 +602,20 @@
         return;
     }
     if(avPlayer==nil){
-        NSLog(@"[INFO] avPlayer : nothing to seek");
+        //NSLog(@"[INFO] avPlayer : nothing to seek");
         return;
     }
     @synchronized(self)
     {
-        state = AV_PLAYER_STATE_SEEKING;
+        state = STATE_SEEKING;
+        lastPlayerState = state;
         buffering = YES;
         [avPlayer pause];
         playing = NO;
+        [progressUpdateTimer invalidate];
+        RELEASE_TO_NIL(progressUpdateTimer);
+        [self fireStateChangeEvent:lastPlayerState];
+        
         // milliseconds are sent for compatibility with Android Ti.Media.audioPlayer
         float seconds = [TiUtils floatValue:[args objectAtIndex:0]];
         seconds /= 1000;
@@ -556,7 +627,8 @@
              //   toleranceBefore: kCMTimeZero
              //    toleranceAfter: kCMTimeZero
                            completionHandler: ^(BOOL finished) {
-                               state = AV_PLAYER_STATE_SEEKING_COMPLETE;
+                               state = STATE_SEEKING_COMPLETE;
+                               lastPlayerState = state;
                                buffering = NO;
 
                                [self fireSeekCompleteEvent];
@@ -573,26 +645,31 @@
         return;
     }
     if(avPlayer==nil){
-        NSLog(@"[INFO] avPlayer : nothing to seekThenPlay");
+        //NSLog(@"[INFO] avPlayer : nothing to seekThenPlay");
         return;
     }
     @synchronized(self)
     {
         [avPlayer pause];
         playing = NO;
+        [progressUpdateTimer invalidate];
+        RELEASE_TO_NIL(progressUpdateTimer);
+
         // milliseconds are sent for compatibility with Android Ti.Media.audioPlayer
         float seconds = [TiUtils floatValue:[args objectAtIndex:0]];
         seconds /= 1000;
         //NSLog(@"[INFO] SEEK request to : %f", seconds);
         CMTime cmTime = CMTimeMake(seconds, 1);
-        state = AV_PLAYER_STATE_SEEKING;
+        state = STATE_WAITING_FOR_DATA;
+        lastPlayerState = state;
         buffering = YES;
         if(CMTIME_IS_VALID(cmTime)){
             [avPlayer.currentItem seekToTime: cmTime
              //   toleranceBefore: kCMTimeZero
              //    toleranceAfter: kCMTimeZero
                            completionHandler: ^(BOOL finished) {
-                               state = AV_PLAYER_STATE_SEEKING_COMPLETE;
+                               state = STATE_SEEKING_COMPLETE;
+                               lastPlayerState = state;
                                buffering = NO;
                                [self fireSeekCompleteEvent];
                                [self play:YES];
@@ -606,7 +683,7 @@
 {
 
     if(avPlayer==nil){
-        NSLog(@"[INFO] avPlayer : nothing to updateProgress");
+        //NSLog(@"[INFO] avPlayer : nothing to updateProgress");
         return;
     }
     // Note : If AVPlayerItem.presentationSize.width and height are zero, it's not a video.
@@ -619,24 +696,26 @@
         {
             
             
-            if( CMTimeCompare(avPlayer.currentItem.asset.duration, kCMTimeIndefinite) == 0 && live_stream == NO){
+            
+            if( CMTimeCompare(avPlayer.currentItem.asset.duration, kCMTimeIndefinite) == 0 && live_flag == NO){
                 // Duration is 'Indefinite' until it's known.
                 // A duration of kCMTimeIndefinite is reported for live streaming
 
-                // NSLog(@"[INFO] LOOKS LIKE A STREAM");
+                NSLog(@"[INFO] LOOKS LIKE A STREAM");
                 playing = YES;
                 paused = NO;
                 buffering = NO;
-                state = AV_PLAYER_STATE_PLAYING;
-                live_stream = YES;
-                
+                state = STATE_PLAYING;
                 lastPlayerState = state;
-                [self fireStateChangeEvent:lastPlayerState];
+                live_stream = YES;
+                live_flag = YES;
+                
+                [self fireStateChangeEvent:state];
                 
                 return;
             }
             
-            if ( CMTimeGetSeconds(avPlayer.currentItem.asset.duration)  > 0  && durationavailable)
+            if ( CMTimeGetSeconds(avPlayer.currentItem.asset.duration)  > 0  && durationavailable && live_stream == NO)
             {
                 double currentProgress = CMTimeGetSeconds(avPlayer.currentItem.currentTime);
                 
@@ -644,34 +723,39 @@
                     playing = YES;
                     paused = NO;
                     buffering = NO;
-                    state = AV_PLAYER_STATE_PLAYING;
-                    time = currentProgress;
+                    state = STATE_PLAYING;
+                    //lastPlayerState = state;
+                    //time = currentProgress;
+                    time = (CMTimeGetSeconds(avPlayer.currentItem.currentTime) * 1000.0f);
                     // fire progress event
                     [self fireProgressEvent:time];
                 }
                 
             }
             
-            if(state != lastPlayerState){
+            /*
+            if(live_stream == YES && live_flag == NO){
+                NSLog(@"[INFO] avPlayer : WE GOT A LIVE ONE!!!!!!  : %d", live_stream);
+                state = STATE_PLAYING;
+                //lastPlayerState = state;
+                live_flag = YES; // set once
+                [self fireStateChangeEvent:state];
+                return;
+                
+            }
+             */
+            
+            
+            if(state != lastPlayerState && avPlayer.currentItem.status == AVPlayerStatusReadyToPlay && live_flag==NO){
                 lastPlayerState = state;
+                //NSLog(@"[INFO] avPlayer : state changed in updateProgress timer. fire change event");
                 [self fireStateChangeEvent:lastPlayerState];
             }
-        }
-    } else {
-        if(paused){
-            state = AV_PLAYER_STATE_PAUSED;
-        } else if(stopped){
-            state = AV_PLAYER_STATE_STOPPED;
-        }
-        if(pausedForAudioSessionInterruption){
-            state = AV_PLAYER_STATE_INTERRUPTED;
-        }
-        if(state != lastPlayerState){
-            // NSLog(@"[INFO] status has changed %d", status);
-            lastPlayerState = state;
-            [self fireStateChangeEvent:lastPlayerState];
+            
+
         }
     }
+    
 }
 
 -(void)fireSeekCompleteEvent
@@ -694,7 +778,8 @@
     if ([self _hasListeners:@"complete"]) {
         NSDictionary *event = [NSDictionary dictionaryWithObjectsAndKeys:
                                self,		@"source",
-                               NUMINT(state),   @"state",
+                               NUMBOOL(YES),        @"success",
+                               NUMINT(0),   @"code", // Android compat
                                @"complete",   @"type",nil];
         [self fireEvent:@"complete" withObject:event];
     }
@@ -719,6 +804,7 @@
     if ([self _hasListeners:@"change"]) {
         NSDictionary *event = [NSDictionary dictionaryWithObjectsAndKeys:
                                NUMINT(value),       @"state",
+                               NUMBOOL(live_stream),        @"live_stream", // could rename this.
                                self,		@"source",
                                @"change",   @"type",nil];
         [self fireEvent:@"change" withObject:event];
@@ -728,13 +814,15 @@
 -(void)fireProgressEvent:(double)value
 {
     if(avPlayer==nil){
-        NSLog(@"[INFO] avPlayer : nothing to fireProgressEvent");
+        //NSLog(@"[INFO] avPlayer : nothing to fireProgressEvent");
         return;
     }
     if ([self _hasListeners:@"progress"]) {
         NSDictionary *event = [NSDictionary dictionaryWithObjectsAndKeys:
-                               NUMDOUBLE(value * 1000),      @"time",
-                               NUMDOUBLE(CMTimeGetSeconds(avPlayer.currentItem.asset.duration) * 1000),    @"duration",
+                               //NUMDOUBLE(value * 1000),      @"time",
+                               NUMINT(state), @"state",
+                               NUMDOUBLE(value),      @"progress", // Android compat.
+                               //NUMDOUBLE(CMTimeGetSeconds(avPlayer.currentItem.asset.duration) * 1000),    @"duration",
                                self,					               @"source",
                                @"progress",                            @"type",nil];
         [self fireEvent:@"progress" withObject:event];

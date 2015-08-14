@@ -29,25 +29,42 @@
     int lastPlayerState;          // playback state
     NSNumber *lastPlayerReadyStatus;    // player status
     BOOL live_stream;                 // for live radio. disables durationavailable
-    double time;                    // current time
+    BOOL live_flag;
+    // double time;                    // current time
     float rate;
     BOOL pausedForAudioSessionInterruption;
  
 }
 
+/*
+Ti.Media.audioPlayer on Android is:
+ 
+0	@Kroll.constant public static final int STATE_BUFFERING = TiSound.STATE_BUFFERING;
+1	@Kroll.constant public static final int STATE_INITIALIZED = TiSound.STATE_INITIALIZED;
+2	@Kroll.constant public static final int STATE_PAUSED = TiSound.STATE_PAUSED;
+3	@Kroll.constant public static final int STATE_PLAYING = TiSound.STATE_PLAYING;
+4	@Kroll.constant public static final int STATE_STARTING = TiSound.STATE_STARTING;
+5	@Kroll.constant public static final int STATE_STOPPED = TiSound.STATE_STOPPED;
+6	@Kroll.constant public static final int STATE_STOPPING = TiSound.STATE_STOPPING;
+7	@Kroll.constant public static final int STATE_WAITING_FOR_DATA = TiSound.STATE_WAITING_FOR_DATA;
+8	@Kroll.constant public static final int STATE_WAITING_FOR_QUEUE = TiSound.STATE_WAITING_FOR_QUEUE;
+ 
+*/
 
-#define AV_PLAYER_STATE_UNKNOWN 0;
-#define AV_PLAYER_STATE_READY 1;
-#define AV_PLAYER_STATE_WAITING_FOR_DATA 2;
-#define AV_PLAYER_STATE_PLAYING 3;
-#define AV_PLAYER_STATE_PAUSED 4;
-#define AV_PLAYER_STATE_STOPPING 5;
-#define AV_PLAYER_STATE_STOPPED 6;
-#define AV_PLAYER_STATE_SEEKING 7;
-#define AV_PLAYER_STATE_SEEKING_COMPLETE 8;
-#define AV_PLAYER_STATE_FAILED 9;
-#define AV_PLAYER_STATE_INTERRUPTED 10;
-
+#define STATE_BUFFERING 0;
+#define STATE_INITIALIZED 1;
+#define STATE_PAUSED 2;
+#define STATE_PLAYING 3;
+#define STATE_STARTING 4;
+#define STATE_STOPPED 5;
+#define STATE_STOPPING 6;
+#define STATE_WAITING_FOR_DATA 7;
+#define STATE_WAITING_FOR_QUEUE 8;
+#define STATE_FAILED 9; // Not on Android
+#define STATE_INTERRUPTED 10; // Not on Android
+#define STATE_SEEKING 11; // Not on Android
+#define STATE_SEEKING_COMPLETE 12; // Not on Android
+ 
 #define AV_PLAYER_STATUS_UNKNOWN 0;
 #define AV_PLAYER_STATUS_READY_TO_PLAY 1;
 #define AV_PLAYER_STATUS_FAILED 2;
@@ -62,6 +79,7 @@
 @property (nonatomic, assign) BOOL playing;
 @property (nonatomic, assign) BOOL paused;
 @property (nonatomic, assign) BOOL buffering;
+@property (nonatomic, assign) BOOL live_flag;
 @property (nonatomic, assign) BOOL live_stream;
 @property (nonatomic, assign) BOOL pausedForAudioSessionInterruption;
 
