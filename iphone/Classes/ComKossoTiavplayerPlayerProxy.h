@@ -28,7 +28,7 @@
     BOOL durationavailable;         // flag so it only fires once
     int lastPlayerState;          // playback state
     NSNumber *lastPlayerReadyStatus;    // player status
-    BOOL live_stream;                 // for live radio. disables durationavailable
+    BOOL streaming;                 // for live radio. disables durationavailable
     BOOL live_flag;
     // double time;                    // current time
     float rate;
@@ -80,7 +80,7 @@ Ti.Media.audioPlayer on Android is:
 @property (nonatomic, assign) BOOL paused;
 @property (nonatomic, assign) BOOL buffering;
 @property (nonatomic, assign) BOOL live_flag;
-@property (nonatomic, assign) BOOL live_stream;
+@property (nonatomic, assign) BOOL streaming;
 @property (nonatomic, assign) BOOL pausedForAudioSessionInterruption;
 
 
