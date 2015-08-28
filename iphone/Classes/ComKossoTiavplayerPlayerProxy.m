@@ -50,7 +50,7 @@
 {
     if(avPlayer!=nil){
         if([avPlayer currentItem] != nil){
-            NSLog(@"[INFO] DEALLOC remove item observers");
+            //NSLog(@"[INFO] DEALLOC remove item observers");
             //[avPlayer.currentItem removeObserver:self forKeyPath:@"timedMetadata"];
             [avPlayer.currentItem removeObserver:self forKeyPath:@"status"];
             [avPlayer.currentItem removeObserver:self forKeyPath:@"playbackBufferEmpty"];
@@ -58,7 +58,7 @@
             [avPlayer.currentItem removeObserver:self forKeyPath:@"playbackBufferFull"];
             [avPlayer.currentItem.asset removeObserver:self forKeyPath:@"duration"];
         }
-        NSLog(@"[INFO] avPlayer DEALLOCATING NOW");
+        //NSLog(@"[INFO] avPlayer DEALLOCATING NOW");
         [[NSNotificationCenter defaultCenter] removeObserver:self];
         [avPlayer release];
     }
@@ -73,7 +73,7 @@
         return;
     }
     @synchronized(self){
-        NSLog(@"[INFO] avPlayer : DESTROY!");
+        //NSLog(@"[INFO] avPlayer : DESTROY!");
         
         // do I need to reset the BOOL flags too? streaming, playing etc?
         
@@ -140,7 +140,7 @@
                                                          NULL,
                                                          NULL,
                                                          kCFStringEncodingUTF8) autorelease];
-    NSLog(@"[INFO] avPlayer : setUrl : %@", url);
+    //NSLog(@"[INFO] avPlayer : setUrl : %@", url);
 
     // Stop if needed
     if(avPlayer!=nil){
@@ -149,7 +149,7 @@
             [progressUpdateTimer invalidate];
             RELEASE_TO_NIL(progressUpdateTimer);
 
-            NSLog(@"[INFO] forcing stop");
+            //NSLog(@"[INFO] forcing stop");
             avPlayer.rate = 0.0f;
             playing = NO;
         }
@@ -708,7 +708,7 @@
                 // Duration is 'Indefinite' until it's known.
                 // A duration of kCMTimeIndefinite is reported for live streaming
 
-                NSLog(@"[INFO] LOOKS LIKE A STREAM");
+                //NSLog(@"[INFO] LOOKS LIKE A STREAM");
                 playing = YES;
                 paused = NO;
                 buffering = NO;
@@ -750,13 +750,9 @@
                 
             }
              */
-            
-            
             if(state != lastPlayerState && avPlayer.currentItem.status == AVPlayerStatusReadyToPlay && live_flag==NO){
-                
                 lastPlayerState = state;
-                
-                NSLog(@"[INFO] avPlayer : state changed in updateProgress timer. fire change event");
+                //NSLog(@"[INFO] avPlayer : state changed in updateProgress timer. fire change event");
                 [self fireStateChangeEvent:lastPlayerState];
             }
             
@@ -796,14 +792,14 @@
 -(void)fireDurationChangeEvent:(double)value
 {
     // audio player to the end.
-    if ([self _hasListeners:@"durationchanged"]) {
+    if ([self _hasListeners:@"durationchange"]) {
         NSDictionary *event = [NSDictionary dictionaryWithObjectsAndKeys:
                                NUMDOUBLE(round(value)), @"duration", // Rounded ms like Android.
                                NUMDOUBLE(round(time)), @"time",
                                self,		@"source",
                                NUMINT(state),   @"state",
-                               @"durationchanged",   @"type",nil];
-        [self fireEvent:@"durationchanged" withObject:event];
+                               @"durationchange",   @"type",nil];
+        [self fireEvent:@"durationchange" withObject:event];
     }
 }
 
